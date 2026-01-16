@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TelePaint: Ultimate Party 🎨</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Rubik', sans-serif;
+            background: #111827;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(236, 72, 153, 0.3) 0, transparent 50%), 
+                radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.3) 0, transparent 50%);
+            color: #fff;
+            overflow-x: hidden;
+            touch-action: pan-y;
+            user-select: none;
+            min-height: 100vh;
+        }
+
+        /* Animations */
+        @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+        @keyframes pop { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        
+        .animate-float { animation: float 3s ease-in-out infinite; }
+        .animate-pop { animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .btn-action {
+            transition: all 0.2s;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+        }
+        .btn-action:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+        /* Canvas & Fog Mode */
+        .canvas-wrapper {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            background: white;
+            touch-action: none;
+        }
+        
+        /* The Fog Overlay */
+        #fog-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            pointer-events: none; /* Let clicks pass through to canvas */
+            mix-blend-mode: hard-light;
+            z-index: 10;
+            transition: opacity 0.5s;
+        }
+
+        .mode-card {
+            border: 2px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .mode-card.selected {
+            border-color: #ec4899;
+            background: rgba(236, 72, 153, 0.1);
+            transform: scale(1.02);
+        }
+
+        .like-btn.liked { color: #ec4899; transform: scale(1.2); }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center p-4">
+
+    <!-- HEADER -->
+    <header class="mb-6 text-center z-10">
+        <h1 class="text-5xl md:text-7xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 animate-float drop-shadow-2xl">
+            TelePaint
+        </h1>
+        <p class="text-gray-400 font-bold tracking-widest text-xs uppercase mt-2">Ultimate Party Edition</p>
+    </header>
+
+    <!-- LOADING -->
+    <div id="view-loading" class="glass-panel p-8 flex flex-col items-center animate-pop">
+        <i class="fas fa-circle-notch fa-spin text-4xl text-pink-500 mb-4"></i>
+        <p class="font-bold">Вмикаємо сервери...</p>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="view-login" class="glass-panel w-full max-w-md p-8 hidden animate-pop">
+        <div class="space-y-6">
+            <div class="text-center">
+                <div id="avatar-preview" class="text-6xl mb-4 animate-bounce cursor-pointer" onclick="randomizeAvatar()">👽</div>
+                <p class="text-xs text-gray-400 mb-1">Твій аватар (клікни щоб змінити)</p>
+                <input type="text" id="username" class="w-full bg-black/30 border border-white/10 rounded-xl p-4 text-center text-xl font-bold focus:border-pink-500 outline-none text-white placeholder-gray-600" placeholder="Введи ім'я..." maxlength="12">
+            </div>
+
+            <div class="h-px bg-white/10"></div>
+
+            <div class="grid gap-3">
+                <button onclick="createRoom()" class="btn-action bg-gradient-to-r from-pink-600 to-purple-600 w-full py-4 rounded-xl font-bold text-lg hover:brightness-110">
+                    👑 Створити кімнату
+                </button>
+                <div class="flex gap-2">
+                    <input type="text" id="room-code-input" class="bg-black/30 border border-white/10 rounded-xl p-3 text-center uppercase font-mono font-bold flex-1" placeholder="КОД">
+                    <button onclick="joinRoom()" class="btn-action bg-indigo-600 px-6 rounded-xl font-bold hover:bg-indigo-500">
+                        Ввійти
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOBBY -->
+    <div id="view-lobby" class="glass-panel w-full max-w-3xl p-6 hidden animate-pop">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+            <div>
+                <p class="text-xs text-gray-400 font-bold uppercase">Код кімнати</p>
+                <h2 onclick="copyCode()" class="text-5xl font-mono font-black text-yellow-400 cursor-pointer hover:text-yellow-300 transition" id="lobby-code">----</h2>
+            </div>
+            <div class="bg-white/5 px-4 py-2 rounded-lg">
+                <i class="fas fa-users text-pink-500"></i> <span id="player-count">0</span> гравців
+            </div>
+        </div>
+
+        <!-- Mode Selection (Host Only) -->
+        <div id="host-settings" class="hidden mb-8">
+            <p class="text-sm font-bold text-gray-300 mb-3">Обери режим гри:</p>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div class="mode-card bg-black/30 p-3 rounded-xl selected" onclick="selectMode('classic', this)">
+                    <div class="text-2xl mb-1">🎨</div>
+                    <div class="font-bold text-sm">Класика</div>
+                    <div class="text-[10px] text-gray-400">60 сек</div>
+                </div>
+                <div class="mode-card bg-black/30 p-3 rounded-xl" onclick="selectMode('blitz', this)">
+                    <div class="text-2xl mb-1">⚡</div>
+                    <div class="font-bold text-sm">Бліц</div>
+                    <div class="text-[10px] text-gray-400">30 сек</div>
+                </div>
+                <div class="mode-card bg-black/30 p-3 rounded-xl" onclick="selectMode('fog', this)">
+                    <div class="text-2xl mb-1">🔦</div>
+                    <div class="font-bold text-sm">Туман</div>
+                    <div class="text-[10px] text-gray-400">Ліхтарик</div>
+                </div>
+                <!-- NEW MODES -->
+                <div class="mode-card bg-black/30 p-3 rounded-xl" onclick="selectMode('reverse', this)">
+                    <div class="text-2xl mb-1">🔄</div>
+                    <div class="font-bold text-sm">Реверс</div>
+                    <div class="text-[10px] text-gray-400">Керування навпаки</div>
+                </div>
+                <div class="mode-card bg-black/30 p-3 rounded-xl" onclick="selectMode('thick', this)">
+                    <div class="text-2xl mb-1">🖌️</div>
+                    <div class="font-bold text-sm">Маляр</div>
+                    <div class="text-[10px] text-gray-400">Тільки товстий пензель</div>
+                </div>
+            </div>
+            
+            <div class="mt-4 flex items-center gap-2">
+                <input type="checkbox" id="chaos-check" class="w-5 h-5 accent-pink-500">
+                <label for="chaos-check" class="text-sm cursor-pointer select-none">🔥 Увімкнути Хаос-Події (землетрус, дзеркало)</label>
+            </div>
+        </div>
+
+        <div id="player-list" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8"></div>
+
+        <button id="start-btn" onclick="startGame()" class="hidden btn-action w-full bg-green-600 py-4 rounded-xl font-bold text-2xl shadow-lg hover:bg-green-500">
+            ПОЧАТИ ГРУ! 🚀
+        </button>
+        <div id="wait-msg" class="hidden text-center p-4 bg-black/20 rounded-xl animate-pulse">
+            Чекаємо, поки хост налаштує гру...
+        </div>
+    </div>
+
+    <!-- WRITING PHASE -->
+    <div id="view-write" class="glass-panel w-full max-w-xl p-6 hidden animate-pop">
+        <div class="flex justify-between mb-4">
+            <span class="bg-blue-600 px-3 py-1 rounded-full text-xs font-bold">Раунд 1</span>
+            <span id="timer-write" class="font-mono text-xl font-bold">⏱️</span>
+        </div>
+        <h3 class="text-2xl font-bold text-center mb-6">Придумай щось дивне:</h3>
+        
+        <div class="relative">
+            <textarea id="scenario-input" rows="3" class="w-full bg-black/30 border-2 border-white/20 rounded-xl p-4 text-xl text-center focus:border-pink-500 outline-none text-white" placeholder="Наприклад: Бетмен краде сало"></textarea>
+            <button onclick="randomPrompt()" class="absolute bottom-2 right-2 bg-white/10 hover:bg-white/20 px-3 py-1 rounded-lg text-xs font-bold">🎲 Рандом</button>
+        </div>
+
+        <button onclick="submitScenario()" class="btn-action w-full bg-pink-600 mt-4 py-3 rounded-xl font-bold">Готово ✅</button>
+    </div>
+
+    <!-- DRAWING PHASE -->
+    <div id="view-draw" class="glass-panel w-full max-w-3xl p-4 hidden">
+        <div class="flex justify-between items-center mb-2 px-2">
+            <div class="flex items-center gap-2">
+                <span class="bg-purple-600 px-3 py-1 rounded-full text-xs font-bold">Малюй!</span>
+                <span id="chaos-badge" class="hidden bg-red-600 px-2 py-1 rounded text-xs font-bold animate-pulse">🔥 ХАОС</span>
+                <span id="mode-badge" class="hidden bg-yellow-600 px-2 py-1 rounded text-xs font-bold uppercase"></span>
+            </div>
+            <div class="bg-black/40 px-4 py-1 rounded-full font-mono text-xl font-bold text-pink-400" id="timer-draw">60</div>
+        </div>
+
+        <div class="bg-yellow-100 text-gray-900 p-3 rounded-xl mb-3 text-center shadow-lg transform -rotate-1">
+            <p class="text-xs font-bold text-gray-500 uppercase">Завдання</p>
+            <h2 id="draw-prompt" class="text-xl md:text-3xl font-black leading-tight">...</h2>
+        </div>
+
+        <div class="canvas-wrapper w-full bg-white relative mx-auto" style="max-width: 600px;">
+            <canvas id="drawing-canvas" width="600" height="400" class="w-full h-auto block cursor-crosshair"></canvas>
+            <!-- Fog Overlay -->
+            <div id="fog-layer" class="hidden"></div>
+        </div>
+
+        <div class="flex flex-wrap gap-2 justify-center mt-4">
+            <div class="flex gap-1 bg-black/40 p-2 rounded-xl">
+                <button onclick="setCol('#000')" class="w-8 h-8 rounded-full bg-black border-2 border-white/50"></button>
+                <button onclick="setCol('#ef4444')" class="w-8 h-8 rounded-full bg-red-500 border-2 border-white/20"></button>
+                <button onclick="setCol('#3b82f6')" class="w-8 h-8 rounded-full bg-blue-500 border-2 border-white/20"></button>
+                <button onclick="setCol('#22c55e')" class="w-8 h-8 rounded-full bg-green-500 border-2 border-white/20"></button>
+                <button onclick="setCol('#eab308')" class="w-8 h-8 rounded-full bg-yellow-500 border-2 border-white/20"></button>
+                <button onclick="setCol('#a855f7')" class="w-8 h-8 rounded-full bg-purple-500 border-2 border-white/20"></button>
+            </div>
+            <div class="flex gap-2 bg-black/40 p-2 rounded-xl" id="brush-controls">
+                <button onclick="setSize(4)" class="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded"><div class="w-1 h-1 bg-white rounded-full"></div></button>
+                <button onclick="setSize(15)" class="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded"><div class="w-4 h-4 bg-white rounded-full"></div></button>
+                <button onclick="clearCanvas()" class="w-8 h-8 text-red-400 hover:text-red-300"><i class="fas fa-trash"></i></button>
+            </div>
+            <button onclick="submitDrawing()" class="btn-action bg-green-600 px-6 py-2 rounded-xl font-bold shadow-lg">ВІДПРАВИТИ</button>
+        </div>
+    </div>
+
+    <!-- GUESSING PHASE -->
+    <div id="view-guess" class="glass-panel w-full max-w-xl p-6 hidden animate-pop">
+        <div class="text-center mb-4">
+            <span class="bg-green-600 px-3 py-1 rounded-full text-xs font-bold">Що це?</span>
+        </div>
+        <div class="bg-white p-2 rounded-xl transform rotate-1 shadow-2xl mb-6">
+            <img id="guess-image" src="" class="w-full rounded bg-gray-100">
+        </div>
+        <input type="text" id="guess-input" class="w-full bg-black/30 border-2 border-white/20 rounded-xl p-4 text-center text-xl text-white" placeholder="Опиши цей шедевр...">
+        <button onclick="submitGuess()" class="btn-action w-full bg-indigo-600 mt-4 py-3 rounded-xl font-bold">Вгадати 🤔</button>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="view-results" class="w-full max-w-4xl hidden pb-20">
+        <h2 class="text-center text-4xl font-black mb-8 text-yellow-400">🏆 Галерея Слави</h2>
+        <div id="gallery-container" class="space-y-12"></div>
+        <div class="fixed bottom-6 left-0 w-full flex justify-center z-50">
+            <button onclick="returnToLobby()" class="btn-action bg-blue-600 px-8 py-3 rounded-full font-bold text-xl shadow-2xl border-2 border-white/20">
+                🔄 Нова гра
+            </button>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast" class="fixed top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 border border-white/20 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-300 -translate-y-40 z-[100]">
+        <span id="toast-msg" class="font-bold text-sm">Повідомлення</span>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+    <script>
+        // --- CONFIGURATION ---
+        const firebaseConfig = {
+          apiKey: "AIzaSyCm8nZvhps4yeYDzPNyKLI_PvadAOeYI20",
+          authDomain: "vhrchat.firebaseapp.com",
+          projectId: "vhrchat",
+          storageBucket: "vhrchat.firebasestorage.app",
+          messagingSenderId: "1039293838718",
+          appId: "1:1039293838718:web:b74fddda402267040bef2f"
+        };
+
+        const AVATARS = ['👽', '🤡', '🦄', '🤖', '🎃', '👻', '🐱', '🐶', '🐸', '🦁', '🐼', '🐨'];
+        const FUNNY_PROMPTS = ["Годзілла в вишиванці", "Зеленський на Марсі", "Кіт їсть борщ", "Пікачу-депутат", "Шрек танцює гопак", "Бабуся хакер"];
+
+        // --- STATE ---
+        let db, auth, currentUser;
+        let roomId = null, isHost = false, gameData = null, unsub = null;
+        let userAvatar = AVATARS[0];
+        
+        // Canvas
+        let canvas, ctx, isDrawing = false;
+        let brush = { color: '#000', size: 4 };
+        let timerInt = null, chaosInt = null;
+
+        // --- INIT ---
+        window.onload = () => {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            auth = firebase.auth();
+            auth.signInAnonymously().then(u => {
+                currentUser = u.user;
+                document.getElementById('view-loading').classList.add('hidden');
+                document.getElementById('view-login').classList.remove('hidden');
+                randomizeAvatar();
+            });
+        };
+
+        // --- UI HELPERS ---
+        const show = (id) => {
+            ['view-login','view-lobby','view-write','view-draw','view-guess','view-results'].forEach(v => document.getElementById(v).classList.add('hidden'));
+            const el = document.getElementById(id);
+            el.classList.remove('hidden');
+            if(id === 'view-draw') setupCanvas();
+        };
+
+        const toast = (msg) => {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = msg;
+            t.classList.remove('-translate-y-40');
+            setTimeout(() => t.classList.add('-translate-y-40'), 3000);
+        };
+
+        window.randomizeAvatar = () => {
+            userAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)];
+            document.getElementById('avatar-preview').innerText = userAvatar;
+        };
+
+        window.randomPrompt = () => {
+            document.getElementById('scenario-input').value = FUNNY_PROMPTS[Math.floor(Math.random() * FUNNY_PROMPTS.length)];
+        };
+
+        window.copyCode = () => {
+            navigator.clipboard.writeText(roomId);
+            toast("Код скопійовано! 📋");
+        };
+
+        // --- LOBBY LOGIC ---
+        window.createRoom = async () => {
+            const name = document.getElementById('username').value.trim() || "Анонім";
+            roomId = Math.random().toString(36).substring(2,6).toUpperCase();
+            
+            await db.collection('rooms').doc(roomId).set({
+                host: currentUser.uid,
+                status: 'lobby',
+                settings: { mode: 'classic', chaos: false },
+                players: { [currentUser.uid]: { name, avatar: userAvatar, score: 0 } },
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            isHost = true;
+            subscribe();
+        };
+
+        window.joinRoom = async () => {
+            const name = document.getElementById('username').value.trim() || "Анонім";
+            const code = document.getElementById('room-code-input').value.toUpperCase();
+            if(!code) return toast("Введи код!");
+            
+            const ref = db.collection('rooms').doc(code);
+            const doc = await ref.get();
+            if(!doc.exists) return toast("Кімнати не існує!");
+            if(doc.data().status !== 'lobby') return toast("Гра вже йде!");
+
+            roomId = code;
+            await ref.update({ [`players.${currentUser.uid}`]: { name, avatar: userAvatar, score: 0 } });
+            subscribe();
+        };
+
+        function subscribe() {
+            if(unsub) unsub();
+            unsub = db.collection('rooms').doc(roomId).onSnapshot(snap => {
+                if(!snap.exists) return location.reload();
+                gameData = snap.data();
+                renderLobby();
+                handleGameStatus();
+            });
+        }
+
+        function renderLobby() {
+            document.getElementById('lobby-code').innerText = roomId;
+            document.getElementById('player-count').innerText = Object.keys(gameData.players).length;
+            
+            const list = document.getElementById('player-list');
+            list.innerHTML = '';
+            Object.values(gameData.players).forEach(p => {
+                list.innerHTML += `
+                    <div class="bg-black/30 p-3 rounded-xl flex items-center gap-3 border border-white/10">
+                        <div class="text-2xl">${p.avatar}</div>
+                        <div class="font-bold truncate text-sm">${p.name}</div>
+                    </div>`;
+            });
+
+            if(gameData.status === 'lobby') {
+                show('view-lobby');
+                if(isHost) {
+                    document.getElementById('host-settings').classList.remove('hidden');
+                    document.getElementById('start-btn').classList.remove('hidden');
+                    document.getElementById('wait-msg').classList.add('hidden');
+                } else {
+                    document.getElementById('host-settings').classList.add('hidden');
+                    document.getElementById('start-btn').classList.add('hidden');
+                    document.getElementById('wait-msg').classList.remove('hidden');
+                }
+            }
+        }
+
+        // --- HOST SETTINGS ---
+        window.selectMode = (mode, el) => {
+            if(!isHost) return;
+            document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+            el.classList.add('selected');
+            db.collection('rooms').doc(roomId).update({ 'settings.mode': mode });
+        };
+
+        document.getElementById('chaos-check').addEventListener('change', (e) => {
+            if(isHost) db.collection('rooms').doc(roomId).update({ 'settings.chaos': e.target.checked });
+        });
+
+        // --- GAME LOOP ---
+        window.startGame = async () => {
+            const players = Object.keys(gameData.players);
+            if(players.length < 2) return toast("Треба хоча б 2 гравці!");
+            
+            await db.collection('rooms').doc(roomId).update({
+                status: 'write',
+                submissions: {}
+            });
+        };
+
+        function handleGameStatus() {
+            const s = gameData.status;
+            const sub = gameData.submissions || {};
+            
+            if(s === 'write') {
+                if(!sub[currentUser.uid]) show('view-write');
+                else showWaitingScreen("Всі пишуть...");
+            } else if(s === 'draw') {
+                startRound('draw');
+            } else if(s === 'guess') {
+                startRound('guess');
+            } else if(s === 'results') {
+                renderResults();
+            }
+        }
+
+        async function startRound(type) {
+            if(gameData.submissions?.[currentUser.uid]) return showWaitingScreen("Чекаємо інших...");
+            
+            const pIds = Object.keys(gameData.players).sort();
+            const myIdx = pIds.indexOf(currentUser.uid);
+            const offset = type === 'draw' ? 1 : 2;
+            const targetUid = pIds[(myIdx + offset) % pIds.length];
+
+            const snap = await db.collection('rooms').doc(roomId).collection('chains').doc(targetUid).get();
+            const steps = snap.data().steps;
+            const lastStep = steps[steps.length - 1];
+
+            if(type === 'draw') {
+                document.getElementById('draw-prompt').innerText = lastStep.content;
+                show('view-draw');
+                
+                const mode = gameData.settings.mode;
+                let time = mode === 'blitz' ? 30 : 60;
+                
+                // Show Mode Badge
+                const badge = document.getElementById('mode-badge');
+                if (mode !== 'classic') {
+                    badge.innerText = mode;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+
+                // Fog Mode
+                const fog = document.getElementById('fog-layer');
+                if(mode === 'fog') {
+                    fog.classList.remove('hidden');
+                    document.addEventListener('mousemove', updateFog);
+                    document.addEventListener('touchmove', updateFog);
+                } else {
+                    fog.classList.add('hidden');
+                    document.removeEventListener('mousemove', updateFog);
+                    document.removeEventListener('touchmove', updateFog);
+                }
+
+                // Thick Brush Mode
+                if(mode === 'thick') {
+                    setSize(30);
+                    document.getElementById('brush-controls').classList.add('hidden'); // Hide sizing tools
+                } else {
+                    setSize(4);
+                    document.getElementById('brush-controls').classList.remove('hidden');
+                }
+
+                startTimer(time);
+                if(gameData.settings.chaos) startChaos();
+            } else {
+                document.getElementById('guess-image').src = lastStep.content;
+                show('view-guess');
+            }
+        }
+
+        // --- SUBMISSIONS ---
+        window.submitScenario = async () => {
+            const txt = document.getElementById('scenario-input').value.trim() || "Порожнеча...";
+            await db.collection('rooms').doc(roomId).collection('chains').doc(currentUser.uid).set({
+                owner: currentUser.uid,
+                steps: [{ type: 'text', content: txt, author: currentUser.uid, likes: 0 }]
+            });
+            markDone();
+        };
+
+        window.submitDrawing = async () => {
+            clearInterval(timerInt);
+            clearInterval(chaosInt);
+            const img = canvas.toDataURL('image/jpeg', 0.5);
+            pushStep('image', img);
+        };
+
+        window.submitGuess = async () => {
+            const txt = document.getElementById('guess-input').value.trim() || "??";
+            pushStep('text', txt);
+        };
+
+        async function pushStep(type, content) {
+            const pIds = Object.keys(gameData.players).sort();
+            const myIdx = pIds.indexOf(currentUser.uid);
+            const offset = type === 'image' ? 1 : 2;
+            const targetUid = pIds[(myIdx + offset) % pIds.length];
+
+            const ref = db.collection('rooms').doc(roomId).collection('chains').doc(targetUid);
+            const doc = await ref.get();
+            const steps = doc.data().steps;
+            steps.push({ type, content, author: currentUser.uid, likes: 0 });
+            await ref.update({ steps });
+            markDone();
+        }
+
+        async function markDone() {
+            showWaitingScreen("Відправлено! Чекаємо...");
+            await db.collection('rooms').doc(roomId).update({ [`submissions.${currentUser.uid}`]: true });
+            
+            if(isHost) {
+                setTimeout(async () => {
+                    const r = await db.collection('rooms').doc(roomId).get();
+                    const total = Object.keys(r.data().players).length;
+                    const done = Object.keys(r.data().submissions).length;
+                    
+                    if(done >= total) {
+                        let next = r.data().status === 'write' ? 'draw' : (r.data().status === 'draw' ? 'guess' : 'results');
+                        await db.collection('rooms').doc(roomId).update({ status: next, submissions: {} });
+                    }
+                }, 1000);
+            }
+        }
+
+        function showWaitingScreen(txt) {
+            document.querySelectorAll('.glass-panel').forEach(e => e.classList.add('hidden'));
+            const d = document.createElement('div');
+            d.id = 'temp-wait';
+            d.className = "fixed inset-0 bg-black/80 flex items-center justify-center flex-col z-50 animate-pop";
+            d.innerHTML = `<div class="text-6xl mb-4 animate-bounce">⏳</div><h2 class="text-2xl font-bold text-white">${txt}</h2>`;
+            document.body.appendChild(d);
+            const old = document.getElementById('temp-wait');
+            if(old && old !== d) old.remove();
+        }
+
+        // --- DRAWING ENGINE ---
+        function setupCanvas() {
+            canvas = document.getElementById('drawing-canvas');
+            ctx = canvas.getContext('2d');
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.width * 0.75;
+            
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(0,0,canvas.width, canvas.height);
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            
+            // Re-apply brush settings
+            setCol(brush.color); setSize(brush.size);
+
+            const getPos = (e) => {
+                const r = canvas.getBoundingClientRect();
+                let x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+                let y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+                
+                // Chaos Mirror Logic
+                if(canvas.style.transform.includes('scaleX')) x = canvas.width - x;
+                
+                // REVERSE MODE LOGIC
+                if(gameData.settings.mode === 'reverse') {
+                    x = canvas.width - x;
+                    y = canvas.height - y;
+                }
+                
+                return {x,y};
+            }
+
+            const start = (e) => { isDrawing=true; ctx.beginPath(); ctx.moveTo(getPos(e).x, getPos(e).y); e.preventDefault(); };
+            const move = (e) => { 
+                if(!isDrawing) return; 
+                const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); 
+                e.preventDefault(); 
+            };
+            const end = () => isDrawing=false;
+
+            canvas.onmousedown = start; canvas.onmousemove = move; canvas.onmouseup = end;
+            canvas.ontouchstart = start; canvas.ontouchmove = move; canvas.ontouchend = end;
+        }
+
+        window.setCol = c => { brush.color = c; if(ctx) ctx.strokeStyle = c; };
+        window.setSize = s => { brush.size = s; if(ctx) ctx.lineWidth = s; };
+        window.clearCanvas = () => { ctx.fillRect(0,0,canvas.width, canvas.height); };
+
+        function startTimer(sec) {
+            clearInterval(timerInt);
+            const el = document.getElementById('timer-draw');
+            el.innerText = sec;
+            timerInt = setInterval(() => {
+                sec--; el.innerText = sec;
+                if(sec <= 0) submitDrawing();
+            }, 1000);
+        }
+
+        function startChaos() {
+            chaosInt = setInterval(() => {
+                const effects = ['mirror', 'shake'];
+                const eff = effects[Math.floor(Math.random() * effects.length)];
+                document.getElementById('chaos-badge').classList.remove('hidden');
+                
+                if(eff === 'mirror') canvas.style.transform = "scaleX(-1)";
+                if(eff === 'shake') document.body.classList.add('animate-bounce');
+
+                setTimeout(() => {
+                    document.getElementById('chaos-badge').classList.add('hidden');
+                    canvas.style.transform = "none";
+                    document.body.classList.remove('animate-bounce');
+                }, 5000);
+            }, 15000);
+        }
+
+        // Fog Mode Handler
+        function updateFog(e) {
+            const fog = document.getElementById('fog-layer');
+            if(fog.classList.contains('hidden')) return;
+            
+            const r = canvas.getBoundingClientRect();
+            let x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+            let y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+            
+            // Create a hole in the black div using gradient mask
+            fog.style.background = `radial-gradient(circle 50px at ${x}px ${y}px, transparent 0%, rgba(0,0,0,0.98) 100%)`;
+        }
+
+        // --- RESULTS & LIKES ---
+        async function renderResults() {
+            const ov = document.getElementById('temp-wait'); if(ov) ov.remove();
+            show('view-results');
+            
+            const cont = document.getElementById('gallery-container');
+            cont.innerHTML = `<div class="text-center"><i class="fas fa-spinner fa-spin text-4xl"></i></div>`;
+            
+            const snap = await db.collection('rooms').doc(roomId).collection('chains').get();
+            cont.innerHTML = '';
+
+            snap.docs.forEach((doc, chainIdx) => {
+                const chain = doc.data();
+                const owner = gameData.players[chain.owner].name;
+                
+                let html = `
+                    <div class="bg-white/5 rounded-3xl p-6 border border-white/10 relative">
+                        <div class="absolute -top-3 -left-2 bg-pink-600 px-4 py-1 rounded-lg font-bold shadow-lg transform -rotate-2">
+                            Історія ${owner}
+                        </div>
+                        <div class="mt-4 space-y-4">
+                `;
+
+                chain.steps.forEach((step, stepIdx) => {
+                    const author = gameData.players[step.author].name;
+                    const avatar = gameData.players[step.author].avatar;
+                    const likeId = `${doc.id}-${stepIdx}`;
+                    
+                    const content = step.type === 'text' 
+                        ? `<div class="bg-gray-800 p-4 rounded-xl text-center text-xl font-bold border border-white/20">"${step.content}"</div>`
+                        : `<img src="${step.content}" class="w-full rounded-xl bg-white border border-white/20">`;
+
+                    html += `
+                        <div class="relative group">
+                            <div class="flex items-center gap-2 mb-1 pl-2">
+                                <span>${avatar}</span> <span class="text-xs text-gray-400 font-bold uppercase">${author}</span>
+                            </div>
+                            ${content}
+                            <div class="flex justify-end mt-2">
+                                <button onclick="likeStep('${doc.id}', ${stepIdx}, this)" class="like-btn text-gray-400 hover:text-pink-500 transition flex items-center gap-1 font-bold bg-black/20 px-3 py-1 rounded-full">
+                                    <i class="fas fa-heart"></i> <span class="count">${step.likes || 0}</span>
+                                </button>
+                            </div>
+                        </div>
+                        ${stepIdx < chain.steps.length - 1 ? '<div class="text-center text-white/20 text-xl">⬇</div>' : ''}
+                    `;
+                });
+                html += `</div></div>`;
+                cont.innerHTML += html;
+            });
+        }
+
+        window.likeStep = async (chainId, stepIdx, btn) => {
+            if(btn.classList.contains('liked')) return;
+            btn.classList.add('liked');
+            const c = btn.querySelector('.count');
+            c.innerText = parseInt(c.innerText) + 1;
+
+            const ref = db.collection('rooms').doc(roomId).collection('chains').doc(chainId);
+            const doc = await ref.get();
+            const steps = doc.data().steps;
+            steps[stepIdx].likes = (steps[stepIdx].likes || 0) + 1;
+            await ref.update({ steps });
+        };
+
+        window.returnToLobby = () => {
+            if(isHost) db.collection('rooms').doc(roomId).update({ status: 'lobby', submissions: {} });
+        };
+
+    </script>
+</body>
+</html>
+
+
