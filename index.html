@@ -138,7 +138,7 @@
         <!-- Mode Selection (Host Only) -->
         <div id="host-settings" class="hidden mb-8">
             <p class="text-sm font-bold text-gray-300 mb-3">Обери режим гри:</p>
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 <div class="mode-card bg-black/30 p-3 rounded-xl selected" onclick="selectMode('classic', this)">
                     <div class="text-2xl mb-1">🎨</div>
                     <div class="font-bold text-sm">Класика</div>
@@ -149,21 +149,25 @@
                     <div class="font-bold text-sm">Бліц</div>
                     <div class="text-[10px] text-gray-400">30 сек</div>
                 </div>
+                <div class="mode-card bg-black/30 p-3 rounded-xl" onclick="selectMode('relax', this)">
+                    <div class="text-2xl mb-1">🧘</div>
+                    <div class="font-bold text-sm">Релакс</div>
+                    <div class="text-[10px] text-gray-400">Без часу</div>
+                </div>
                 <div class="mode-card bg-black/30 p-3 rounded-xl" onclick="selectMode('fog', this)">
                     <div class="text-2xl mb-1">🔦</div>
                     <div class="font-bold text-sm">Туман</div>
                     <div class="text-[10px] text-gray-400">Ліхтарик</div>
                 </div>
-                <!-- NEW MODES -->
                 <div class="mode-card bg-black/30 p-3 rounded-xl" onclick="selectMode('reverse', this)">
                     <div class="text-2xl mb-1">🔄</div>
                     <div class="font-bold text-sm">Реверс</div>
-                    <div class="text-[10px] text-gray-400">Керування навпаки</div>
+                    <div class="text-[10px] text-gray-400">Інверсія</div>
                 </div>
                 <div class="mode-card bg-black/30 p-3 rounded-xl" onclick="selectMode('thick', this)">
                     <div class="text-2xl mb-1">🖌️</div>
                     <div class="font-bold text-sm">Маляр</div>
-                    <div class="text-[10px] text-gray-400">Тільки товстий пензель</div>
+                    <div class="text-[10px] text-gray-400">Товстий</div>
                 </div>
             </div>
             
@@ -491,7 +495,9 @@
                 // Show Mode Badge
                 const badge = document.getElementById('mode-badge');
                 if (mode !== 'classic') {
-                    badge.innerText = mode;
+                    // Symbol map
+                    const symbols = { 'blitz': '⚡', 'fog': '🔦', 'reverse': '🔄', 'thick': '🖌️', 'relax': '🧘' };
+                    badge.innerText = (symbols[mode] || '') + ' ' + mode;
                     badge.classList.remove('hidden');
                 } else {
                     badge.classList.add('hidden');
@@ -518,7 +524,16 @@
                     document.getElementById('brush-controls').classList.remove('hidden');
                 }
 
-                startTimer(time);
+                // TIMER LOGIC
+                clearInterval(timerInt);
+                const timerEl = document.getElementById('timer-draw');
+                
+                if (mode === 'relax') {
+                    timerEl.innerText = "∞";
+                } else {
+                    startTimer(time);
+                }
+
                 if(gameData.settings.chaos) startChaos();
             } else {
                 document.getElementById('guess-image').src = lastStep.content;
