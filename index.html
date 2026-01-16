@@ -375,6 +375,11 @@
                 gameData = snap.data();
                 renderLobby();
                 handleGameStatus();
+                
+                // HOST LOGIC: Check for level transition on every update
+                if (isHost && gameData.submissions) {
+                    checkProgress();
+                }
             });
         }
 
@@ -433,20 +438,39 @@
             const s = gameData.status;
             const sub = gameData.submissions || {};
             
+            // Remove waiting screen if we moved to next stage
+            const waitScreen = document.getElementById('temp-wait');
+            
             if(s === 'write') {
-                if(!sub[currentUser.uid]) show('view-write');
-                else showWaitingScreen("Всі пишуть...");
+                if(!sub[currentUser.uid]) {
+                    if(waitScreen) waitScreen.remove();
+                    show('view-write');
+                } else {
+                    showWaitingScreen("Всі пишуть...");
+                }
             } else if(s === 'draw') {
-                startRound('draw');
+                if(!sub[currentUser.uid]) {
+                     if(waitScreen) waitScreen.remove();
+                     startRound('draw');
+                } else {
+                     showWaitingScreen("Всі малюють...");
+                }
             } else if(s === 'guess') {
-                startRound('guess');
+                if(!sub[currentUser.uid]) {
+                     if(waitScreen) waitScreen.remove();
+                     startRound('guess');
+                } else {
+                     showWaitingScreen("Всі вгадують...");
+                }
             } else if(s === 'results') {
+                if(waitScreen) waitScreen.remove();
                 renderResults();
             }
         }
 
         async function startRound(type) {
-            if(gameData.submissions?.[currentUser.uid]) return showWaitingScreen("Чекаємо інших...");
+            // Safety check: dont restart if already submitted
+            if(gameData.submissions?.[currentUser.uid]) return;
             
             const pIds = Object.keys(gameData.players).sort();
             const myIdx = pIds.indexOf(currentUser.uid);
@@ -541,30 +565,43 @@
         async function markDone() {
             showWaitingScreen("Відправлено! Чекаємо...");
             await db.collection('rooms').doc(roomId).update({ [`submissions.${currentUser.uid}`]: true });
+        }
+
+        function checkProgress() {
+            if(!isHost || !gameData) return;
             
-            if(isHost) {
-                setTimeout(async () => {
-                    const r = await db.collection('rooms').doc(roomId).get();
-                    const total = Object.keys(r.data().players).length;
-                    const done = Object.keys(r.data().submissions).length;
-                    
-                    if(done >= total) {
-                        let next = r.data().status === 'write' ? 'draw' : (r.data().status === 'draw' ? 'guess' : 'results');
-                        await db.collection('rooms').doc(roomId).update({ status: next, submissions: {} });
-                    }
-                }, 1000);
+            const total = Object.keys(gameData.players).length;
+            const done = Object.keys(gameData.submissions || {}).length;
+            
+            if(done >= total && total > 0) {
+                // Determine next status
+                let next = '';
+                if(gameData.status === 'write') next = 'draw';
+                else if(gameData.status === 'draw') next = 'guess';
+                else if(gameData.status === 'guess') next = 'results';
+                
+                if(next) {
+                    db.collection('rooms').doc(roomId).update({ 
+                        status: next, 
+                        submissions: {} 
+                    });
+                }
             }
         }
 
         function showWaitingScreen(txt) {
+            // Only show if not already showing
+            if(document.getElementById('temp-wait')) {
+                document.querySelector('#temp-wait h2').innerText = txt;
+                return;
+            }
+            
             document.querySelectorAll('.glass-panel').forEach(e => e.classList.add('hidden'));
             const d = document.createElement('div');
             d.id = 'temp-wait';
             d.className = "fixed inset-0 bg-black/80 flex items-center justify-center flex-col z-50 animate-pop";
             d.innerHTML = `<div class="text-6xl mb-4 animate-bounce">⏳</div><h2 class="text-2xl font-bold text-white">${txt}</h2>`;
             document.body.appendChild(d);
-            const old = document.getElementById('temp-wait');
-            if(old && old !== d) old.remove();
         }
 
         // --- DRAWING ENGINE ---
